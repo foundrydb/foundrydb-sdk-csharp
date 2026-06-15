@@ -167,11 +167,11 @@ public class FoundryDBClient : IDisposable
         => Backups.TriggerAsync(serviceId, req, ct);
 
     /// <summary>Enables auth for an app service. Shorthand for <c>Auth.EnableAsync()</c>.</summary>
-    public Task<AuthEnableResponse> EnableAppServiceAuthAsync(string serviceId, AuthEnableRequest req, CancellationToken ct = default)
+    public Task<AuthConfigurationWithKeys> EnableAppServiceAuthAsync(string serviceId, AuthEnableRequest req, CancellationToken ct = default)
         => Auth.EnableAsync(serviceId, req, ct);
 
     /// <summary>Gets the auth configuration for an app service. Shorthand for <c>Auth.GetAsync()</c>.</summary>
-    public Task<AuthGetResponse> GetAppServiceAuthAsync(string serviceId, CancellationToken ct = default)
+    public Task<AuthConfigurationWithKeys> GetAppServiceAuthAsync(string serviceId, CancellationToken ct = default)
         => Auth.GetAsync(serviceId, ct);
 
     /// <summary>Disables auth for an app service. Shorthand for <c>Auth.DisableAsync()</c>.</summary>
@@ -179,7 +179,7 @@ public class FoundryDBClient : IDisposable
         => Auth.DisableAsync(serviceId, ct);
 
     /// <summary>Rotates the JWT signing key for an app service. Shorthand for <c>Auth.RotateKeyAsync()</c>.</summary>
-    public Task<AuthRotateKeyResponse> RotateAppServiceAuthKeyAsync(string serviceId, CancellationToken ct = default)
+    public Task<AuthSigningKey> RotateAppServiceAuthKeyAsync(string serviceId, CancellationToken ct = default)
         => Auth.RotateKeyAsync(serviceId, ct);
 
     /// <summary>Revokes a session for an app service. Shorthand for <c>Auth.RevokeSessionAsync()</c>.</summary>

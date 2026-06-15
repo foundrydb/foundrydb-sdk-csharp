@@ -5,43 +5,54 @@ namespace FoundryDB.SDK.Models;
 // ----- Request models -----
 
 /// <summary>
-/// Request body for enabling auth-as-a-service on a managed app service.
+/// Request body for <c>POST /app-services/{id}/auth/enable</c>.
+/// AttachmentId names one of the app's existing PostgreSQL attachments to back
+/// the identity store. IssuerDomainChoice is "fallback" or "custom" and is
+/// fixed at enable time. SMTP is mandatory. IdpProviders optionally enables
+/// social login (Google and GitHub); an empty list enables magic-link login only.
 /// </summary>
 public class AuthEnableRequest
 {
-    /// <summary>SMTP configuration for sending transactional auth emails.</summary>
-    [JsonPropertyName("smtp")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public SmtpConfiguration? Smtp { get; set; }
-
-    /// <summary>UI theme customisation for the hosted auth portal.</summary>
-    [JsonPropertyName("theme")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public AuthTheme? Theme { get; set; }
-
-    /// <summary>Social / enterprise identity providers to enable.</summary>
-    [JsonPropertyName("idp_providers")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public List<IdpProviderConfig>? IdpProviders { get; set; }
+    /// <summary>
+    /// UUID of one of the app's existing PostgreSQL attachments that will back
+    /// the identity store.
+    /// </summary>
+    [JsonPropertyName("attachment_id")]
+    public string AttachmentId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Controls where the issuer domain is sourced from.
-    /// Accepted values: "service_domain", "custom_domain".
+    /// Where the issuer domain comes from. "fallback" uses an
+    /// auth-&lt;id&gt;.foundrydb.com subdomain; "custom" uses the app's
+    /// primary custom domain. Fixed at enable time.
     /// </summary>
     [JsonPropertyName("issuer_domain_choice")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? IssuerDomainChoice { get; set; }
+    public string IssuerDomainChoice { get; set; } = string.Empty;
 
-    /// <summary>UUID of a custom domain attachment to use as the issuer origin.</summary>
-    [JsonPropertyName("attachment_id")]
+    /// <summary>
+    /// SMTP credentials used by the issuer to send magic-link emails.
+    /// Write-only: stored in the platform secret store, never returned.
+    /// </summary>
+    [JsonPropertyName("smtp")]
+    public AuthSmtpConfig Smtp { get; set; } = new();
+
+    /// <summary>Branding applied to the hosted login pages.</summary>
+    [JsonPropertyName("theme")]
+    public AuthTheme Theme { get; set; } = new();
+
+    /// <summary>
+    /// Social-login providers to enable. Each entry's ClientSecret is
+    /// write-only and never returned. Omit or leave empty for magic-link only.
+    /// </summary>
+    [JsonPropertyName("idp_providers")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? AttachmentId { get; set; }
+    public List<IdpProviderRequest>? IdpProviders { get; set; }
 }
 
 /// <summary>
-/// SMTP settings used for sending transactional auth emails (magic links, OTPs, etc.).
+/// SMTP credentials the issuer uses to send magic-link emails. Write-only:
+/// accepted on enable, stored in the platform secret store, and never returned.
 /// </summary>
-public class SmtpConfiguration
+public class AuthSmtpConfig
 {
     /// <summary>SMTP server hostname.</summary>
     [JsonPropertyName("host")]
@@ -55,7 +66,7 @@ public class SmtpConfiguration
     [JsonPropertyName("username")]
     public string Username { get; set; } = string.Empty;
 
-    /// <summary>SMTP account password.</summary>
+    /// <summary>SMTP account password. Write-only.</summary>
     [JsonPropertyName("password")]
     public string Password { get; set; } = string.Empty;
 
@@ -65,17 +76,20 @@ public class SmtpConfiguration
 
     /// <summary>Sender display name shown in the From header.</summary>
     [JsonPropertyName("from_name")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? FromName { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public string FromName { get; set; } = string.Empty;
 
-    /// <summary>When true, TLS certificate verification is skipped. Not recommended for production.</summary>
+    /// <summary>
+    /// Disables STARTTLS certificate verification. For test mail catchers only;
+    /// never set in production.
+    /// </summary>
     [JsonPropertyName("insecure_skip_verify")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public bool? InsecureSkipVerify { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool InsecureSkipVerify { get; set; }
 }
 
 /// <summary>
-/// UI theme settings for the hosted auth portal.
+/// Non-PII branding applied to the hosted login pages.
 /// </summary>
 public class AuthTheme
 {
@@ -101,12 +115,12 @@ public class AuthTheme
 }
 
 /// <summary>
-/// Configuration for a social or enterprise identity provider (request shape).
-/// Includes the client secret, which is write-only and never returned by the API.
+/// Enables one social-login provider. ClientSecret is write-only: stored in the
+/// platform secret store and never returned by any response.
 /// </summary>
-public class IdpProviderConfig
+public class IdpProviderRequest
 {
-    /// <summary>Provider identifier (e.g. "google", "github", "microsoft", "saml").</summary>
+    /// <summary>Provider identifier. Accepted values: "google", "github".</summary>
     [JsonPropertyName("provider")]
     public string Provider { get; set; } = string.Empty;
 
@@ -115,13 +129,13 @@ public class IdpProviderConfig
     public string ClientId { get; set; } = string.Empty;
 
     /// <summary>
-    /// OAuth2 / OIDC client secret issued by the identity provider.
-    /// Write-only: this value is accepted on create/update but never returned by the API.
+    /// OAuth2 / OIDC client secret. Write-only: accepted here, stored in the
+    /// platform secret store, and never returned by any response.
     /// </summary>
     [JsonPropertyName("client_secret")]
     public string ClientSecret { get; set; } = string.Empty;
 
-    /// <summary>Human-readable label shown on the sign-in button.</summary>
+    /// <summary>Human-readable label shown on the sign-in button (optional).</summary>
     [JsonPropertyName("display_name")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? DisplayName { get; set; }
@@ -130,56 +144,48 @@ public class IdpProviderConfig
 // ----- Response models -----
 
 /// <summary>
-/// Response returned when auth is enabled on a service.
+/// Response from <c>POST /app-services/{id}/auth/enable</c> and
+/// <c>GET /app-services/{id}/auth</c>: the auth configuration plus its signing
+/// key records.
 /// </summary>
-public class AuthEnableResponse
+public class AuthConfigurationWithKeys
 {
-    /// <summary>Active auth configuration for this service.</summary>
+    /// <summary>Auth enablement configuration.</summary>
     [JsonPropertyName("auth")]
-    public AuthConfiguration Auth { get; set; } = new();
+    public AuthConfiguration? Auth { get; set; }
 
-    /// <summary>Active signing keys. The first key is the current signing key.</summary>
+    /// <summary>
+    /// Signing key records for this configuration. Status follows the dual-kid
+    /// rotation lifecycle: pending, active, retiring, retired, or revoked.
+    /// </summary>
     [JsonPropertyName("signing_keys")]
     public List<AuthSigningKey> SigningKeys { get; set; } = new();
 }
 
 /// <summary>
-/// Response returned when querying the auth configuration for a service.
-/// Returns 404 when auth has not been enabled.
-/// </summary>
-public class AuthGetResponse
-{
-    /// <summary>Active auth configuration for this service.</summary>
-    [JsonPropertyName("auth")]
-    public AuthConfiguration Auth { get; set; } = new();
-
-    /// <summary>Active signing keys. The first key is the current signing key.</summary>
-    [JsonPropertyName("signing_keys")]
-    public List<AuthSigningKey> SigningKeys { get; set; } = new();
-}
-
-/// <summary>
-/// Response returned when auth is disabled on a service.
+/// Response from <c>POST /app-services/{id}/auth/disable</c>.
 /// </summary>
 public class AuthDisableResponse
 {
-    /// <summary>Human-readable status message.</summary>
+    /// <summary>Human-readable status message (e.g. "Disabled").</summary>
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 }
 
 /// <summary>
-/// Response returned when a signing key is rotated.
+/// Response from <c>POST /app-services/{id}/auth/rotate-key</c>: the newly
+/// minted signing key.
 /// </summary>
 public class AuthRotateKeyResponse
 {
     /// <summary>The newly active signing key.</summary>
     [JsonPropertyName("signing_key")]
-    public AuthSigningKey SigningKey { get; set; } = new();
+    public AuthSigningKey? SigningKey { get; set; }
 }
 
 /// <summary>
-/// Response returned when a session is revoked.
+/// Response from <c>POST /app-services/{id}/auth/sessions/{sessionId}/revoke</c>.
+/// Revocation is asynchronous; use the task ID to poll for completion.
 /// </summary>
 public class AuthRevokeSessionResponse
 {
@@ -189,52 +195,96 @@ public class AuthRevokeSessionResponse
 }
 
 /// <summary>
-/// Auth configuration attached to a managed app service.
+/// Auth enablement record for an app service. The identity data itself lives in
+/// the customer's own PostgreSQL database; this record holds enablement state
+/// only. Secret custody locations are never serialised.
 /// </summary>
 public class AuthConfiguration
 {
-    /// <summary>Unique identifier for the auth configuration.</summary>
+    /// <summary>Unique identifier for this auth configuration.</summary>
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>Service this auth configuration belongs to.</summary>
-    [JsonPropertyName("service_id")]
-    public string ServiceId { get; set; } = string.Empty;
+    /// <summary>Owner user ID.</summary>
+    [JsonPropertyName("user_id")]
+    public string UserId { get; set; } = string.Empty;
 
-    /// <summary>OIDC issuer URL (e.g. "https://auth.example.com").</summary>
+    /// <summary>Organisation this configuration belongs to (if any).</summary>
+    [JsonPropertyName("organization_id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OrganizationId { get; set; }
+
+    /// <summary>ID of the app service that owns this auth configuration.</summary>
+    [JsonPropertyName("app_service_id")]
+    public string AppServiceId { get; set; } = string.Empty;
+
+    /// <summary>ID of the PostgreSQL service backing the identity store.</summary>
+    [JsonPropertyName("database_service_id")]
+    public string DatabaseServiceId { get; set; } = string.Empty;
+
+    /// <summary>Attachment ID linking the app to the backing PostgreSQL service.</summary>
+    [JsonPropertyName("attachment_id")]
+    public string AttachmentId { get; set; } = string.Empty;
+
+    /// <summary>OIDC issuer URL (e.g. "https://auth-&lt;id&gt;.foundrydb.com").</summary>
     [JsonPropertyName("issuer_url")]
-    public string? IssuerUrl { get; set; }
+    public string IssuerUrl { get; set; } = string.Empty;
 
-    /// <summary>Whether the auth service is currently enabled.</summary>
-    [JsonPropertyName("enabled")]
-    public bool Enabled { get; set; }
+    /// <summary>Fallback issuer domain (always an auth-&lt;id&gt;.foundrydb.com subdomain).</summary>
+    [JsonPropertyName("fallback_domain")]
+    public string FallbackDomain { get; set; } = string.Empty;
 
-    /// <summary>UI theme applied to the hosted auth portal.</summary>
+    /// <summary>Custom domain used as the issuer origin when IssuerDomainChoice is "custom".</summary>
+    [JsonPropertyName("custom_domain")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CustomDomain { get; set; }
+
+    /// <summary>Enablement status (e.g. "Enabled", "Disabled", "Provisioning").</summary>
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>Version of the identity schema applied in the customer database.</summary>
+    [JsonPropertyName("schema_version_applied")]
+    public string SchemaVersionApplied { get; set; } = string.Empty;
+
+    /// <summary>Human-readable reason when the configuration is in a failure state.</summary>
+    [JsonPropertyName("failure_reason")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FailureReason { get; set; }
+
+    /// <summary>Branding applied to the hosted login pages.</summary>
     [JsonPropertyName("theme")]
-    public AuthTheme? Theme { get; set; }
+    public AuthTheme Theme { get; set; } = new();
 
     /// <summary>
-    /// Configured identity providers (response shape, client_secret omitted).
+    /// Configured social-login providers. Client secrets are never included.
+    /// An empty list means social login is not configured.
     /// </summary>
     [JsonPropertyName("idp_providers")]
-    public List<IdpProviderInfo>? IdpProviders { get; set; }
+    public List<IdpProviderInfo> IdpProviders { get; set; } = new();
 
-    /// <summary>ISO-8601 timestamp when the auth configuration was created.</summary>
+    /// <summary>ID of the internal authd app service (platform-managed).</summary>
+    [JsonPropertyName("auth_app_service_id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AuthAppServiceId { get; set; }
+
+    /// <summary>Timestamp when the auth configuration was created.</summary>
     [JsonPropertyName("created_at")]
-    public DateTimeOffset? CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 
-    /// <summary>ISO-8601 timestamp of the last update.</summary>
+    /// <summary>Timestamp of the last update.</summary>
     [JsonPropertyName("updated_at")]
-    public DateTimeOffset? UpdatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 /// <summary>
-/// Identity provider information as returned by the API.
-/// The client_secret is never included in responses.
+/// Non-secret configuration of one social-login provider returned in
+/// <see cref="AuthConfiguration.IdpProviders"/>. The client_secret is never
+/// included in any response; it is custodied in the platform secret store.
 /// </summary>
 public class IdpProviderInfo
 {
-    /// <summary>Provider identifier (e.g. "google", "github", "microsoft", "saml").</summary>
+    /// <summary>Provider identifier (e.g. "google", "github").</summary>
     [JsonPropertyName("provider")]
     public string Provider { get; set; } = string.Empty;
 
@@ -244,31 +294,55 @@ public class IdpProviderInfo
 
     /// <summary>Human-readable label shown on the sign-in button.</summary>
     [JsonPropertyName("display_name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? DisplayName { get; set; }
 }
 
 /// <summary>
-/// A JWT signing key used by the auth service.
+/// Controller-side record of one JWT signing keypair. The key material is held
+/// in the platform secret store; only the kid, algorithm, and lifecycle status
+/// are exposed. Status follows the dual-kid rotation lifecycle: pending, active,
+/// retiring, retired, or revoked.
 /// </summary>
 public class AuthSigningKey
 {
-    /// <summary>Unique key identifier (kid).</summary>
-    [JsonPropertyName("key_id")]
-    public string KeyId { get; set; } = string.Empty;
+    /// <summary>Unique identifier for this signing key record.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
 
-    /// <summary>Key algorithm (e.g. "RS256", "ES256").</summary>
+    /// <summary>ID of the auth configuration this key belongs to.</summary>
+    [JsonPropertyName("auth_configuration_id")]
+    public string AuthConfigurationId { get; set; } = string.Empty;
+
+    /// <summary>JWK key ID (kid) embedded in signed tokens.</summary>
+    [JsonPropertyName("kid")]
+    public string Kid { get; set; } = string.Empty;
+
+    /// <summary>Signing algorithm (e.g. "RS256", "ES256").</summary>
     [JsonPropertyName("algorithm")]
-    public string? Algorithm { get; set; }
+    public string Algorithm { get; set; } = string.Empty;
 
-    /// <summary>Whether this key is currently active for signing new tokens.</summary>
-    [JsonPropertyName("is_active")]
-    public bool IsActive { get; set; }
+    /// <summary>
+    /// Lifecycle status: pending, active, retiring, retired, or revoked.
+    /// </summary>
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
 
-    /// <summary>ISO-8601 timestamp when this key was created.</summary>
+    /// <summary>Timestamp when this key became the active signing key.</summary>
+    [JsonPropertyName("activated_at")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? ActivatedAt { get; set; }
+
+    /// <summary>Timestamp when this key was retired (null while still active).</summary>
+    [JsonPropertyName("retired_at")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? RetiredAt { get; set; }
+
+    /// <summary>Timestamp when this key record was created.</summary>
     [JsonPropertyName("created_at")]
-    public DateTimeOffset? CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 
-    /// <summary>ISO-8601 timestamp when this key was rotated out (null if still active).</summary>
-    [JsonPropertyName("rotated_at")]
-    public DateTimeOffset? RotatedAt { get; set; }
+    /// <summary>Timestamp of the last update to this key record.</summary>
+    [JsonPropertyName("updated_at")]
+    public DateTimeOffset UpdatedAt { get; set; }
 }

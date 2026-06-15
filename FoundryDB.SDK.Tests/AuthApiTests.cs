@@ -34,28 +34,48 @@ public class AuthApiTests
         {
             method = req.Method;
             path = req.RequestUri?.PathAndQuery;
-            return Responses.Ok(SampleEnableResponseJson("svc-1"));
+            return Responses.Ok(SampleAuthWithKeysJson("svc-1"));
         });
 
-        await client.Auth.EnableAsync("svc-1", new AuthEnableRequest());
+        await client.Auth.EnableAsync("svc-1", new AuthEnableRequest
+        {
+            AttachmentId = "att-1",
+            IssuerDomainChoice = "fallback",
+            Smtp = new AuthSmtpConfig
+            {
+                Host = "smtp.example.com",
+                Port = 587,
+                Username = "user",
+                Password = "pass",
+                FromAddress = "no-reply@example.com"
+            }
+        });
 
         Assert.Equal(HttpMethod.Post, method);
         Assert.Equal("/app-services/svc-1/auth/enable", path);
     }
 
     [Fact]
-    public async Task EnableAsync_DeserializesAuthConfiguration()
+    public async Task EnableAsync_DeserializesAuthConfigurationWithKeys()
     {
-        using var client = BuildClient(_ => Responses.Ok(SampleEnableResponseJson("svc-1")));
+        using var client = BuildClient(_ => Responses.Ok(SampleAuthWithKeysJson("svc-1")));
 
-        var result = await client.Auth.EnableAsync("svc-1", new AuthEnableRequest());
+        var result = await client.Auth.EnableAsync("svc-1", new AuthEnableRequest
+        {
+            AttachmentId = "att-1",
+            IssuerDomainChoice = "fallback",
+            Smtp = new AuthSmtpConfig { Host = "smtp.example.com", Port = 587, Username = "u", Password = "p", FromAddress = "a@b.com" }
+        });
 
         Assert.NotNull(result.Auth);
-        Assert.Equal("svc-1", result.Auth.ServiceId);
-        Assert.True(result.Auth.Enabled);
+        Assert.Equal("auth-cfg-1", result.Auth!.Id);
+        Assert.Equal("svc-1", result.Auth.AppServiceId);
+        Assert.Equal("https://auth-svc-1.foundrydb.com", result.Auth.IssuerUrl);
+        Assert.Equal("Enabled", result.Auth.Status);
         Assert.Single(result.SigningKeys);
-        Assert.Equal("key-1", result.SigningKeys[0].KeyId);
-        Assert.True(result.SigningKeys[0].IsActive);
+        Assert.Equal("kid-abc", result.SigningKeys[0].Kid);
+        Assert.Equal("RS256", result.SigningKeys[0].Algorithm);
+        Assert.Equal("active", result.SigningKeys[0].Status);
     }
 
     [Fact]
@@ -98,7 +118,7 @@ public class AuthApiTests
         using var client = BuildClient(req =>
         {
             path = req.RequestUri?.PathAndQuery;
-            return Responses.Ok(SampleGetResponseJson("svc-2"));
+            return Responses.Ok(SampleAuthWithKeysJson("svc-2"));
         });
 
         await client.Auth.GetAsync("svc-2");
@@ -107,15 +127,17 @@ public class AuthApiTests
     }
 
     [Fact]
-    public async Task GetAsync_DeserializesAuthConfiguration()
+    public async Task GetAsync_DeserializesAuthConfigurationWithKeys()
     {
-        using var client = BuildClient(_ => Responses.Ok(SampleGetResponseJson("svc-2")));
+        using var client = BuildClient(_ => Responses.Ok(SampleAuthWithKeysJson("svc-2")));
 
         var result = await client.Auth.GetAsync("svc-2");
 
-        Assert.Equal("svc-2", result.Auth.ServiceId);
-        Assert.True(result.Auth.Enabled);
+        Assert.NotNull(result.Auth);
+        Assert.Equal("svc-2", result.Auth!.AppServiceId);
+        Assert.Equal("Enabled", result.Auth.Status);
         Assert.NotEmpty(result.SigningKeys);
+        Assert.Equal("kid-abc", result.SigningKeys[0].Kid);
     }
 
     [Fact]
@@ -149,7 +171,7 @@ public class AuthApiTests
         {
             method = req.Method;
             path = req.RequestUri?.PathAndQuery;
-            return Responses.Ok("{\"status\":\"disabled\"}");
+            return Responses.Ok("{\"status\":\"Disabled\"}");
         });
 
         await client.Auth.DisableAsync("svc-3");
@@ -161,11 +183,11 @@ public class AuthApiTests
     [Fact]
     public async Task DisableAsync_DeserializesStatus()
     {
-        using var client = BuildClient(_ => Responses.Ok("{\"status\":\"disabled\"}"));
+        using var client = BuildClient(_ => Responses.Ok("{\"status\":\"Disabled\"}"));
 
         var result = await client.Auth.DisableAsync("svc-3");
 
-        Assert.Equal("disabled", result.Status);
+        Assert.Equal("Disabled", result.Status);
     }
 
     [Fact]
@@ -203,9 +225,10 @@ public class AuthApiTests
 
         var result = await client.Auth.RotateKeyAsync("svc-4");
 
-        Assert.Equal("key-2", result.SigningKey.KeyId);
-        Assert.Equal("RS256", result.SigningKey.Algorithm);
-        Assert.True(result.SigningKey.IsActive);
+        Assert.Equal("key-id-2", result.Id);
+        Assert.Equal("kid-new", result.Kid);
+        Assert.Equal("RS256", result.Algorithm);
+        Assert.Equal("active", result.Status);
     }
 
     [Fact]
@@ -273,10 +296,15 @@ public class AuthApiTests
         using var client = BuildClient(req =>
         {
             path = req.RequestUri?.PathAndQuery;
-            return Responses.Ok(SampleEnableResponseJson("svc-6"));
+            return Responses.Ok(SampleAuthWithKeysJson("svc-6"));
         });
 
-        await client.EnableAppServiceAuthAsync("svc-6", new AuthEnableRequest());
+        await client.EnableAppServiceAuthAsync("svc-6", new AuthEnableRequest
+        {
+            AttachmentId = "att-1",
+            IssuerDomainChoice = "fallback",
+            Smtp = new AuthSmtpConfig { Host = "h", Port = 587, Username = "u", Password = "p", FromAddress = "a@b.com" }
+        });
 
         Assert.Equal("/app-services/svc-6/auth/enable", path);
     }
@@ -288,7 +316,7 @@ public class AuthApiTests
         using var client = BuildClient(req =>
         {
             path = req.RequestUri?.PathAndQuery;
-            return Responses.Ok(SampleGetResponseJson("svc-7"));
+            return Responses.Ok(SampleAuthWithKeysJson("svc-7"));
         });
 
         await client.GetAppServiceAuthAsync("svc-7");
@@ -303,7 +331,7 @@ public class AuthApiTests
         using var client = BuildClient(req =>
         {
             path = req.RequestUri?.PathAndQuery;
-            return Responses.Ok("{\"status\":\"disabled\"}");
+            return Responses.Ok("{\"status\":\"Disabled\"}");
         });
 
         await client.DisableAppServiceAuthAsync("svc-8");
@@ -344,9 +372,9 @@ public class AuthApiTests
     // ----- Response shape: client_secret must never appear -----
 
     [Fact]
-    public void AuthGetResponse_DoesNotExposeClientSecret()
+    public void IdpProviderInfo_DoesNotExposeClientSecret()
     {
-        // Verify IdpProviderInfo (the response model) has no ClientSecret property.
+        // IdpProviderInfo is the response model; it must never carry a ClientSecret.
         var props = typeof(IdpProviderInfo).GetProperties();
         foreach (var prop in props)
         {
@@ -356,43 +384,66 @@ public class AuthApiTests
         }
     }
 
+    [Fact]
+    public void IdpProviderRequest_ExposesClientSecret()
+    {
+        // IdpProviderRequest is the request model; it must carry ClientSecret.
+        var prop = typeof(IdpProviderRequest).GetProperty("ClientSecret");
+        Assert.NotNull(prop);
+    }
+
     // ----- Helpers -----
 
-    private static string SampleEnableResponseJson(string serviceId) =>
+    /// <summary>
+    /// Produces a canonical auth+signing_keys JSON response matching the Go SDK
+    /// AuthConfigurationWithKeys shape.
+    /// </summary>
+    private static string SampleAuthWithKeysJson(string appServiceId) =>
         JsonSerializer.Serialize(new
         {
             auth = new
             {
                 id = "auth-cfg-1",
-                service_id = serviceId,
-                enabled = true,
-                issuer_url = "https://auth.example.com"
+                user_id = "user-1",
+                app_service_id = appServiceId,
+                database_service_id = "db-svc-1",
+                attachment_id = "att-1",
+                issuer_url = $"https://auth-{appServiceId}.foundrydb.com",
+                fallback_domain = $"auth-{appServiceId}.foundrydb.com",
+                status = "Enabled",
+                schema_version_applied = "1",
+                theme = new { display_name = "My App" },
+                idp_providers = Array.Empty<object>(),
+                created_at = "2026-01-01T00:00:00Z",
+                updated_at = "2026-01-01T00:00:00Z"
             },
             signing_keys = new[]
             {
-                new { key_id = "key-1", algorithm = "RS256", is_active = true }
-            }
-        });
-
-    private static string SampleGetResponseJson(string serviceId) =>
-        JsonSerializer.Serialize(new
-        {
-            auth = new
-            {
-                id = "auth-cfg-1",
-                service_id = serviceId,
-                enabled = true,
-                issuer_url = "https://auth.example.com"
-            },
-            signing_keys = new[]
-            {
-                new { key_id = "key-1", algorithm = "RS256", is_active = true }
+                new
+                {
+                    id = "key-id-1",
+                    auth_configuration_id = "auth-cfg-1",
+                    kid = "kid-abc",
+                    algorithm = "RS256",
+                    status = "active",
+                    created_at = "2026-01-01T00:00:00Z",
+                    updated_at = "2026-01-01T00:00:00Z"
+                }
             }
         });
 
     private static string SampleRotateKeyResponseJson() =>
         JsonSerializer.Serialize(new
         {
-            signing_key = new { key_id = "key-2", algorithm = "RS256", is_active = true }
+            signing_key = new
+            {
+                id = "key-id-2",
+                auth_configuration_id = "auth-cfg-1",
+                kid = "kid-new",
+                algorithm = "RS256",
+                status = "active",
+                created_at = "2026-01-02T00:00:00Z",
+                updated_at = "2026-01-02T00:00:00Z"
+            }
         });
 }

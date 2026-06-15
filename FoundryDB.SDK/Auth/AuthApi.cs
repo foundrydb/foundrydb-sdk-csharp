@@ -4,9 +4,10 @@ using FoundryDB.SDK.Models;
 namespace FoundryDB.SDK.Auth;
 
 /// <summary>
-/// Operations for auth-as-a-service on a managed app service.
-/// Auth provides a hosted identity layer (OIDC / JWT) backed by the service's
-/// PostgreSQL database, with optional social login via configurable identity providers.
+/// Auth-as-a-service operations on a managed app service.
+/// Auth provides a hosted OIDC / JWT identity layer backed by the service's
+/// PostgreSQL database, with optional social login via Google and GitHub.
+/// All endpoints are under <c>/app-services/{serviceId}/auth</c>.
 /// </summary>
 public class AuthApi
 {
@@ -18,40 +19,52 @@ public class AuthApi
     }
 
     /// <summary>
-    /// Enables auth-as-a-service for a managed app service and returns the active
-    /// configuration together with the initial signing keys.
+    /// Enables auth-as-a-service for a managed app service and returns the auth
+    /// configuration together with the initial signing keys. The named attachment
+    /// must reference a PostgreSQL service; the platform provisions the identity
+    /// schema in the customer database and stands up the OIDC issuer. SMTP
+    /// credentials and any social-login client secrets are stored in the platform
+    /// secret store and never returned.
     /// </summary>
-    /// <param name="serviceId">Service UUID.</param>
-    /// <param name="req">Enable parameters (SMTP, theme, identity providers, issuer domain).</param>
-    public async Task<AuthEnableResponse> EnableAsync(string serviceId, AuthEnableRequest req, CancellationToken ct = default)
+    /// <param name="serviceId">App service UUID.</param>
+    /// <param name="req">Enable parameters (attachment, SMTP, theme, identity providers, issuer domain).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Auth configuration and initial signing keys.</returns>
+    public async Task<AuthConfigurationWithKeys> EnableAsync(string serviceId, AuthEnableRequest req, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(serviceId)) throw new ArgumentException("Service ID must not be empty.", nameof(serviceId));
         ArgumentNullException.ThrowIfNull(req);
 
         var json = await _client.PostAsync($"/app-services/{serviceId}/auth/enable", req, orgId: null, ct).ConfigureAwait(false);
-        return Deserialize<AuthEnableResponse>(json)
+        return Deserialize<AuthConfigurationWithKeys>(json)
             ?? throw new FoundryDBException(200, "Deserialization Error", "Response did not contain an auth enable payload.");
     }
 
     /// <summary>
-    /// Returns the current auth configuration and signing keys for a managed app service.
-    /// Throws <see cref="FoundryDBException"/> with status 404 when auth has not been enabled.
+    /// Returns the current auth configuration and signing key records for a
+    /// managed app service. Throws <see cref="FoundryDBException"/> with HTTP
+    /// status 404 when auth has not been enabled on this service.
     /// </summary>
-    /// <param name="serviceId">Service UUID.</param>
-    public async Task<AuthGetResponse> GetAsync(string serviceId, CancellationToken ct = default)
+    /// <param name="serviceId">App service UUID.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Auth configuration and signing keys.</returns>
+    public async Task<AuthConfigurationWithKeys> GetAsync(string serviceId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(serviceId)) throw new ArgumentException("Service ID must not be empty.", nameof(serviceId));
 
         var json = await _client.GetAsync($"/app-services/{serviceId}/auth", orgId: null, ct).ConfigureAwait(false);
-        return Deserialize<AuthGetResponse>(json)
+        return Deserialize<AuthConfigurationWithKeys>(json)
             ?? throw new FoundryDBException(200, "Deserialization Error", "Response did not contain an auth configuration.");
     }
 
     /// <summary>
-    /// Disables auth-as-a-service for a managed app service. All active sessions
-    /// are invalidated and the signing keys are revoked.
+    /// Disables auth-as-a-service for a managed app service. The end-user
+    /// identity data in the customer's database is left untouched; only the
+    /// platform-managed issuer and enablement state are torn down.
     /// </summary>
-    /// <param name="serviceId">Service UUID.</param>
+    /// <param name="serviceId">App service UUID.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Disable result with a status string.</returns>
     public async Task<AuthDisableResponse> DisableAsync(string serviceId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(serviceId)) throw new ArgumentException("Service ID must not be empty.", nameof(serviceId));
@@ -62,25 +75,33 @@ public class AuthApi
     }
 
     /// <summary>
-    /// Rotates the active JWT signing key for a managed app service.
-    /// The previous key is retained for token verification until it expires.
+    /// Rotates the JWT signing key and returns the newly minted key record.
+    /// Rotation is dual-kid: the new key is published alongside the outgoing
+    /// one so tokens signed by the previous key keep validating until it retires.
     /// </summary>
-    /// <param name="serviceId">Service UUID.</param>
-    public async Task<AuthRotateKeyResponse> RotateKeyAsync(string serviceId, CancellationToken ct = default)
+    /// <param name="serviceId">App service UUID.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The newly minted signing key record.</returns>
+    public async Task<AuthSigningKey> RotateKeyAsync(string serviceId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(serviceId)) throw new ArgumentException("Service ID must not be empty.", nameof(serviceId));
 
         var json = await _client.PostAsync($"/app-services/{serviceId}/auth/rotate-key", payload: null, orgId: null, ct).ConfigureAwait(false);
-        return Deserialize<AuthRotateKeyResponse>(json)
+        var result = Deserialize<AuthRotateKeyResponse>(json)
             ?? throw new FoundryDBException(200, "Deserialization Error", "Response did not contain a signing key.");
+        return result.SigningKey
+            ?? throw new FoundryDBException(200, "Deserialization Error", "Response signing_key was null.");
     }
 
     /// <summary>
-    /// Revokes a specific session by ID, immediately invalidating its tokens.
-    /// Returns HTTP 202 Accepted; the revocation is completed asynchronously.
+    /// Revokes one end-user session by ID. Revocation is dispatched
+    /// asynchronously to the backing database's primary VM. The API returns
+    /// HTTP 202 Accepted with a task ID that can be used to poll completion.
     /// </summary>
-    /// <param name="serviceId">Service UUID.</param>
+    /// <param name="serviceId">App service UUID.</param>
     /// <param name="sessionId">Session identifier to revoke.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Revoke response with the asynchronous task ID.</returns>
     public async Task<AuthRevokeSessionResponse> RevokeSessionAsync(string serviceId, string sessionId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(serviceId)) throw new ArgumentException("Service ID must not be empty.", nameof(serviceId));
