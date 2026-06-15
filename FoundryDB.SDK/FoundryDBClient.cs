@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using FoundryDB.SDK.Auth;
 using FoundryDB.SDK.Backups;
 using FoundryDB.SDK.Models;
 using FoundryDB.SDK.Organizations;
@@ -69,6 +70,9 @@ public class FoundryDBClient : IDisposable
     /// <summary>Operations on backups.</summary>
     public BackupsApi Backups { get; }
 
+    /// <summary>Auth-as-a-service operations on a managed app service.</summary>
+    public AuthApi Auth { get; }
+
     // ----- Constructors -----
 
     /// <summary>
@@ -117,6 +121,7 @@ public class FoundryDBClient : IDisposable
         Organizations = new OrganizationsApi(this);
         Users = new UsersApi(this);
         Backups = new BackupsApi(this);
+        Auth = new AuthApi(this);
     }
 
     // ----- Convenience top-level methods -----
@@ -160,6 +165,26 @@ public class FoundryDBClient : IDisposable
     /// <summary>Triggers a backup. Shorthand for <c>Backups.TriggerAsync()</c>.</summary>
     public Task<Backup> TriggerBackupAsync(string serviceId, CreateBackupRequest req, CancellationToken ct = default)
         => Backups.TriggerAsync(serviceId, req, ct);
+
+    /// <summary>Enables auth for an app service. Shorthand for <c>Auth.EnableAsync()</c>.</summary>
+    public Task<AuthEnableResponse> EnableAppServiceAuthAsync(string serviceId, AuthEnableRequest req, CancellationToken ct = default)
+        => Auth.EnableAsync(serviceId, req, ct);
+
+    /// <summary>Gets the auth configuration for an app service. Shorthand for <c>Auth.GetAsync()</c>.</summary>
+    public Task<AuthGetResponse> GetAppServiceAuthAsync(string serviceId, CancellationToken ct = default)
+        => Auth.GetAsync(serviceId, ct);
+
+    /// <summary>Disables auth for an app service. Shorthand for <c>Auth.DisableAsync()</c>.</summary>
+    public Task<AuthDisableResponse> DisableAppServiceAuthAsync(string serviceId, CancellationToken ct = default)
+        => Auth.DisableAsync(serviceId, ct);
+
+    /// <summary>Rotates the JWT signing key for an app service. Shorthand for <c>Auth.RotateKeyAsync()</c>.</summary>
+    public Task<AuthRotateKeyResponse> RotateAppServiceAuthKeyAsync(string serviceId, CancellationToken ct = default)
+        => Auth.RotateKeyAsync(serviceId, ct);
+
+    /// <summary>Revokes a session for an app service. Shorthand for <c>Auth.RevokeSessionAsync()</c>.</summary>
+    public Task<AuthRevokeSessionResponse> RevokeAppServiceAuthSessionAsync(string serviceId, string sessionId, CancellationToken ct = default)
+        => Auth.RevokeSessionAsync(serviceId, sessionId, ct);
 
     // ----- Internal HTTP helpers -----
 
