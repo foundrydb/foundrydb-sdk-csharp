@@ -208,6 +208,73 @@ client.Backups.ListAsync(serviceId, ct)
 client.Backups.TriggerAsync(serviceId, req, ct)
 ```
 
+### Edge Gateway
+
+Manage custom domains and edge settings (cache rules, rate limiting, WAF mode) for app services.
+
+```csharp
+// List all custom domains on an app service
+List<EdgeDomain> domains = await client.EdgeGateway.ListAppDomainsAsync("app-uuid", ct);
+
+// Add a custom domain (starts in PendingVerification status)
+EdgeDomain domain = await client.EdgeGateway.CreateAppDomainAsync("app-uuid", "www.example.com", ct);
+
+// Trigger an immediate DNS verification pass
+EdgeDomain verified = await client.EdgeGateway.VerifyAppDomainAsync("app-uuid", "domain-uuid", ct);
+
+// Remove a custom domain (idempotent: 404 treated as success)
+await client.EdgeGateway.DeleteAppDomainAsync("app-uuid", "domain-uuid", ct);
+
+// Get the edge overview: enabled state, home PoP, CNAME target, per-PoP convergence
+EdgeStatus status = await client.EdgeGateway.GetAppEdgeStatusAsync("app-uuid", ct);
+Console.WriteLine($"CNAME target: {status.CnameTarget}");
+Console.WriteLine($"Config version: {status.ConfigVersion}");
+
+// Replace customer-tunable edge settings
+EdgeSettings updated = await client.EdgeGateway.UpdateAppEdgeSettingsAsync("app-uuid",
+    new EdgeSettingsRequest
+    {
+        CacheRules = new List<EdgeCacheRule>
+        {
+            new EdgeCacheRule { PathPrefix = "/static/", TtlSeconds = 3600 }
+        },
+        RateLimit = new EdgeRateLimit
+        {
+            RequestsPerSecond = 100,
+            Burst = 200,
+            Key = EdgeRateLimitKey.Ip
+        },
+        WafMode = EdgeWAFMode.Detect
+    }, ct);
+Console.WriteLine($"Fleet converging on config version {updated.ConfigVersion}");
+```
+
+#### EdgeDomain properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Id` | `string` | Unique identifier (UUID) |
+| `ServiceId` | `string` | App service this domain belongs to |
+| `Domain` | `string` | Customer-supplied hostname |
+| `Status` | `EdgeDomainStatus` | Lifecycle status (see below) |
+| `CnameTarget` | `string?` | Platform hostname to CNAME to |
+| `CertificateId` | `string?` | TLS certificate ID once issued |
+| `ErrorMessage` | `string?` | Error detail when status is Failed |
+| `CreatedAt` | `string` | ISO-8601 creation timestamp |
+| `UpdatedAt` | `string` | ISO-8601 last-updated timestamp |
+
+`EdgeDomainStatus` values: `PendingVerification`, `Verifying`, `IssuingCertificate`, `Propagating`, `Active`, `Failed`, `Deleting`.
+
+#### EdgeStatus properties
+
+| Property | Type | Description |
+|---|---|---|
+| `EdgeEnabled` | `bool` | Whether the edge tier is active |
+| `HomePop` | `string?` | Primary PoP zone slug |
+| `CnameTarget` | `string?` | Hostname custom domains must CNAME to |
+| `ConfigVersion` | `long` | Desired-state version the fleet converges on |
+| `Applications` | `List<EdgeApplicationStatusItem>?` | Per-PoP convergence entries |
+
 ## Error Handling
 
 All API errors throw `FoundryDBException`:

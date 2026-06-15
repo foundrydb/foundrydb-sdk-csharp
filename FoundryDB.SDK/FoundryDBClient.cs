@@ -2,12 +2,17 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using FoundryDB.SDK.AppJobs;
+using FoundryDB.SDK.AppServices;
 using FoundryDB.SDK.Auth;
 using FoundryDB.SDK.Backups;
+using FoundryDB.SDK.EdgeGateway;
 using FoundryDB.SDK.Models;
 using FoundryDB.SDK.Organizations;
+using FoundryDB.SDK.Queues;
 using FoundryDB.SDK.Services;
 using FoundryDB.SDK.Users;
+using FoundryDB.SDK.Webhooks;
 
 namespace FoundryDB.SDK;
 
@@ -70,6 +75,21 @@ public class FoundryDBClient : IDisposable
     /// <summary>Operations on backups.</summary>
     public BackupsApi Backups { get; }
 
+    /// <summary>Operations on app services (container hosting).</summary>
+    public AppServicesApi AppServices { get; }
+
+    /// <summary>Operations on jobs defined on app services.</summary>
+    public AppJobsApi AppJobs { get; }
+
+    /// <summary>Operations on message queues on managed PostgreSQL services.</summary>
+    public QueuesApi Queues { get; }
+
+    /// <summary>Operations on organisation webhook endpoints.</summary>
+    public WebhooksApi Webhooks { get; }
+
+    /// <summary>Operations on app service custom domains and edge settings (cache, rate limiting, WAF).</summary>
+    public EdgeGatewayApi EdgeGateway { get; }
+
     /// <summary>Auth-as-a-service operations on a managed app service.</summary>
     public AuthApi Auth { get; }
 
@@ -121,6 +141,11 @@ public class FoundryDBClient : IDisposable
         Organizations = new OrganizationsApi(this);
         Users = new UsersApi(this);
         Backups = new BackupsApi(this);
+        AppServices = new AppServicesApi(this);
+        AppJobs = new AppJobsApi(this);
+        Queues = new QueuesApi(this);
+        Webhooks = new WebhooksApi(this);
+        EdgeGateway = new EdgeGatewayApi(this);
         Auth = new AuthApi(this);
     }
 
@@ -212,6 +237,44 @@ public class FoundryDBClient : IDisposable
     {
         using var req = BuildRequest(HttpMethod.Delete, path, orgId);
         await SendAsync(req, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends a DELETE and returns the response body. Used for endpoints that return
+    /// a body on deletion (e.g. queues returning the deleted queue in Deprovisioning state).
+    /// </summary>
+    internal async Task<string> DeleteWithBodyAsync(string path, string? orgId, CancellationToken ct)
+    {
+        using var req = BuildRequest(HttpMethod.Delete, path, orgId);
+        return await SendAsync(req, ct).ConfigureAwait(false);
+    }
+
+    internal async Task<string> PatchAsync(string path, object? payload, string? orgId, CancellationToken ct)
+    {
+        using var req = BuildRequest(HttpMethod.Patch, path, orgId);
+        if (payload is not null)
+            req.Content = new StringContent(
+                JsonSerializer.Serialize(payload, payload.GetType(), JsonOptions),
+                Encoding.UTF8,
+                "application/json");
+        else
+            req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+
+        return await SendAsync(req, ct).ConfigureAwait(false);
+    }
+
+    internal async Task<string> PutAsync(string path, object? payload, string? orgId, CancellationToken ct)
+    {
+        using var req = BuildRequest(HttpMethod.Put, path, orgId);
+        if (payload is not null)
+            req.Content = new StringContent(
+                JsonSerializer.Serialize(payload, payload.GetType(), JsonOptions),
+                Encoding.UTF8,
+                "application/json");
+        else
+            req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+
+        return await SendAsync(req, ct).ConfigureAwait(false);
     }
 
     private HttpRequestMessage BuildRequest(HttpMethod method, string path, string? orgId)
