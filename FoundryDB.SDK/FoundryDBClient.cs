@@ -13,6 +13,7 @@ using FoundryDB.SDK.Models;
 using FoundryDB.SDK.Organizations;
 using FoundryDB.SDK.Queues;
 using FoundryDB.SDK.Services;
+using FoundryDB.SDK.Stacks;
 using FoundryDB.SDK.Users;
 using FoundryDB.SDK.Webhooks;
 
@@ -101,6 +102,9 @@ public class FoundryDBClient : IDisposable
     /// <summary>Companion-app attachment operations (catalog, create, list, credentials).</summary>
     public AttachmentsApi Attachments { get; }
 
+    /// <summary>Vertical starter stack operations (templates, preview, launch, retry).</summary>
+    public StacksApi Stacks { get; }
+
     // ----- Constructors -----
 
     /// <summary>
@@ -157,6 +161,7 @@ public class FoundryDBClient : IDisposable
         Auth = new AuthApi(this);
         Compliance = new ComplianceApi(this);
         Attachments = new AttachmentsApi(this);
+        Stacks = new StacksApi(this);
     }
 
     // ----- Convenience top-level methods -----
