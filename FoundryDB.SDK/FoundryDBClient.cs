@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using FoundryDB.SDK.AppJobs;
 using FoundryDB.SDK.AppServices;
+using FoundryDB.SDK.Attachments;
 using FoundryDB.SDK.Auth;
 using FoundryDB.SDK.Backups;
 using FoundryDB.SDK.Compliance;
@@ -97,6 +98,9 @@ public class FoundryDBClient : IDisposable
     /// <summary>Compliance evidence packet operations (SOC 2, GDPR Art. 30 ROPA).</summary>
     public ComplianceApi Compliance { get; }
 
+    /// <summary>Companion-app attachment operations (catalog, create, list, credentials).</summary>
+    public AttachmentsApi Attachments { get; }
+
     // ----- Constructors -----
 
     /// <summary>
@@ -152,6 +156,7 @@ public class FoundryDBClient : IDisposable
         EdgeGateway = new EdgeGatewayApi(this);
         Auth = new AuthApi(this);
         Compliance = new ComplianceApi(this);
+        Attachments = new AttachmentsApi(this);
     }
 
     // ----- Convenience top-level methods -----
