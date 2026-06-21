@@ -6,6 +6,7 @@ using FoundryDB.SDK.AppJobs;
 using FoundryDB.SDK.AppServices;
 using FoundryDB.SDK.Auth;
 using FoundryDB.SDK.Backups;
+using FoundryDB.SDK.Compliance;
 using FoundryDB.SDK.EdgeGateway;
 using FoundryDB.SDK.Models;
 using FoundryDB.SDK.Organizations;
@@ -93,6 +94,9 @@ public class FoundryDBClient : IDisposable
     /// <summary>Auth-as-a-service operations on a managed app service.</summary>
     public AuthApi Auth { get; }
 
+    /// <summary>Compliance evidence packet operations (SOC 2, GDPR Art. 30 ROPA).</summary>
+    public ComplianceApi Compliance { get; }
+
     // ----- Constructors -----
 
     /// <summary>
@@ -147,6 +151,7 @@ public class FoundryDBClient : IDisposable
         Webhooks = new WebhooksApi(this);
         EdgeGateway = new EdgeGatewayApi(this);
         Auth = new AuthApi(this);
+        Compliance = new ComplianceApi(this);
     }
 
     // ----- Convenience top-level methods -----
@@ -212,6 +217,20 @@ public class FoundryDBClient : IDisposable
         => Auth.RevokeSessionAsync(serviceId, sessionId, ct);
 
     // ----- Internal HTTP helpers -----
+
+    internal async Task<byte[]> GetBytesAsync(string path, string? orgId, CancellationToken ct)
+    {
+        using var req = BuildRequest(HttpMethod.Get, path, orgId);
+        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            ThrowApiError((int)resp.StatusCode, body);
+        }
+
+        return await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+    }
 
     internal async Task<string> GetAsync(string path, string? orgId, CancellationToken ct)
     {
