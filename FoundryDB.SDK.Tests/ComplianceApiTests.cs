@@ -374,4 +374,201 @@ public class ComplianceApiTests
         Assert.NotNull(result.Keys);
         Assert.Empty(result.Keys!);
     }
+
+    // ----- ListComplianceSubscriptionsAsync -----
+
+    [Fact]
+    public async Task ListComplianceSubscriptionsAsync_SendsGetToCorrectPath()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        using var client = BuildClient(req =>
+        {
+            method = req.Method;
+            path = req.RequestUri?.PathAndQuery;
+            return Responses.Ok("{\"subscriptions\":[]}");
+        });
+
+        await client.Compliance.ListComplianceSubscriptionsAsync("org-1");
+
+        Assert.Equal(HttpMethod.Get, method);
+        Assert.Equal("/organizations/org-1/compliance-subscriptions", path);
+    }
+
+    [Fact]
+    public async Task ListComplianceSubscriptionsAsync_DeserializesSubscriptions()
+    {
+        var body = JsonSerializer.Serialize(new
+        {
+            subscriptions = new[]
+            {
+                new
+                {
+                    framework = "soc2",
+                    enabled = true,
+                    monthly_price_eur = 49.0,
+                    subscribed_at = "2026-06-01T00:00:00Z",
+                    canceled_at = (string?)null
+                },
+                new
+                {
+                    framework = "gdpr_ropa",
+                    enabled = false,
+                    monthly_price_eur = 29.0,
+                    subscribed_at = (string?)null,
+                    canceled_at = "2026-05-15T12:00:00Z"
+                }
+            }
+        });
+        using var client = BuildClient(_ => Responses.Ok(body));
+
+        var result = await client.Compliance.ListComplianceSubscriptionsAsync("org-1");
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("soc2", result[0].Framework);
+        Assert.True(result[0].Enabled);
+        Assert.Equal(49.0, result[0].MonthlyPriceEur);
+        Assert.Equal("2026-06-01T00:00:00Z", result[0].SubscribedAt);
+        Assert.Null(result[0].CanceledAt);
+        Assert.Equal("gdpr_ropa", result[1].Framework);
+        Assert.False(result[1].Enabled);
+        Assert.Equal(29.0, result[1].MonthlyPriceEur);
+        Assert.Null(result[1].SubscribedAt);
+        Assert.Equal("2026-05-15T12:00:00Z", result[1].CanceledAt);
+    }
+
+    [Fact]
+    public async Task ListComplianceSubscriptionsAsync_EmptyOrgId_ThrowsArgumentException()
+    {
+        using var client = BuildClient(_ => Responses.Ok("{}"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.Compliance.ListComplianceSubscriptionsAsync("  "));
+    }
+
+    // ----- SubscribeComplianceFrameworkAsync -----
+
+    [Fact]
+    public async Task SubscribeComplianceFrameworkAsync_SendsPutToCorrectPath()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        var response = JsonSerializer.Serialize(new
+        {
+            framework = "soc2",
+            enabled = true,
+            monthly_price_eur = 49.0,
+            subscribed_at = "2026-06-22T00:00:00Z",
+            canceled_at = (string?)null
+        });
+        using var client = BuildClient(req =>
+        {
+            method = req.Method;
+            path = req.RequestUri?.PathAndQuery;
+            return Responses.Ok(response);
+        });
+
+        var result = await client.Compliance.SubscribeComplianceFrameworkAsync("org-1", "soc2");
+
+        Assert.Equal(HttpMethod.Put, method);
+        Assert.Equal("/organizations/org-1/compliance-subscriptions/soc2", path);
+        Assert.Equal("soc2", result.Framework);
+        Assert.True(result.Enabled);
+        Assert.Equal(49.0, result.MonthlyPriceEur);
+        Assert.Equal("2026-06-22T00:00:00Z", result.SubscribedAt);
+    }
+
+    [Fact]
+    public async Task SubscribeComplianceFrameworkAsync_EmptyOrgId_ThrowsArgumentException()
+    {
+        using var client = BuildClient(_ => Responses.Ok("{}"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.Compliance.SubscribeComplianceFrameworkAsync("  ", "soc2"));
+    }
+
+    [Fact]
+    public async Task SubscribeComplianceFrameworkAsync_EmptyFramework_ThrowsArgumentException()
+    {
+        using var client = BuildClient(_ => Responses.Ok("{}"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.Compliance.SubscribeComplianceFrameworkAsync("org-1", ""));
+    }
+
+    // ----- UnsubscribeComplianceFrameworkAsync -----
+
+    [Fact]
+    public async Task UnsubscribeComplianceFrameworkAsync_SendsDeleteToCorrectPath()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        using var client = BuildClient(req =>
+        {
+            method = req.Method;
+            path = req.RequestUri?.PathAndQuery;
+            return Responses.Ok("{}");
+        });
+
+        await client.Compliance.UnsubscribeComplianceFrameworkAsync("org-1", "soc2");
+
+        Assert.Equal(HttpMethod.Delete, method);
+        Assert.Equal("/organizations/org-1/compliance-subscriptions/soc2", path);
+    }
+
+    [Fact]
+    public async Task UnsubscribeComplianceFrameworkAsync_EmptyOrgId_ThrowsArgumentException()
+    {
+        using var client = BuildClient(_ => Responses.Ok("{}"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.Compliance.UnsubscribeComplianceFrameworkAsync("  ", "soc2"));
+    }
+
+    [Fact]
+    public async Task UnsubscribeComplianceFrameworkAsync_EmptyFramework_ThrowsArgumentException()
+    {
+        using var client = BuildClient(_ => Responses.Ok("{}"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.Compliance.UnsubscribeComplianceFrameworkAsync("org-1", ""));
+    }
+
+    // ----- RotateComplianceSigningKeyAsync -----
+
+    [Fact]
+    public async Task RotateComplianceSigningKeyAsync_SendsPostToCorrectPath()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        var response = JsonSerializer.Serialize(new
+        {
+            algorithm = "Ed25519",
+            keys = new[]
+            {
+                new { key_id = "key-new", algorithm = "Ed25519", public_key = "MCowBQ...", active = true, retired_at = (string?)null },
+                new { key_id = "key-old", algorithm = "Ed25519", public_key = "MCowBQ...", active = false, retired_at = "2026-06-22T10:00:00Z" }
+            }
+        });
+        using var client = BuildClient(req =>
+        {
+            method = req.Method;
+            path = req.RequestUri?.PathAndQuery;
+            return Responses.Ok(response);
+        });
+
+        var result = await client.Compliance.RotateComplianceSigningKeyAsync();
+
+        Assert.Equal(HttpMethod.Post, method);
+        Assert.Equal("/admin/compliance/signing-keys/rotate", path);
+        Assert.Equal("Ed25519", result.Algorithm);
+        Assert.NotNull(result.Keys);
+        Assert.Equal(2, result.Keys!.Count);
+        Assert.Equal("key-new", result.Keys[0].KeyId);
+        Assert.True(result.Keys[0].Active);
+        Assert.Null(result.Keys[0].RetiredAt);
+        Assert.Equal("key-old", result.Keys[1].KeyId);
+        Assert.False(result.Keys[1].Active);
+        Assert.Equal("2026-06-22T10:00:00Z", result.Keys[1].RetiredAt);
+    }
 }

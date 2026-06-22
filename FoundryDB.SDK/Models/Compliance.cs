@@ -281,3 +281,43 @@ public class ComplianceSigningKeySet
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ComplianceSigningKey>? Keys { get; set; }
 }
+
+/// <summary>
+/// A compliance framework subscription for an organisation,
+/// granting access to on-demand report generation and quarterly automated packets.
+/// </summary>
+public class ComplianceSubscription
+{
+    /// <summary>Compliance framework identifier (e.g. "soc2", "gdpr_ropa", "dora", "eu_ai_act").</summary>
+    [JsonPropertyName("framework")]
+    public string Framework { get; set; } = string.Empty;
+
+    /// <summary>Whether the subscription is currently active.</summary>
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; }
+
+    /// <summary>Monthly price for this subscription in EUR.</summary>
+    [JsonPropertyName("monthly_price_eur")]
+    public double MonthlyPriceEur { get; set; }
+
+    /// <summary>ISO-8601 timestamp when the subscription was created, or null if not yet subscribed.</summary>
+    [JsonPropertyName("subscribed_at")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SubscribedAt { get; set; }
+
+    /// <summary>ISO-8601 timestamp when the subscription was canceled, or null if still active.</summary>
+    [JsonPropertyName("canceled_at")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CanceledAt { get; set; }
+}
+
+/// <summary>
+/// Response envelope returned by the list compliance subscriptions endpoint.
+/// </summary>
+public class ListComplianceSubscriptionsResponse
+{
+    /// <summary>All compliance framework subscriptions for the organisation.</summary>
+    [JsonPropertyName("subscriptions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ComplianceSubscription>? Subscriptions { get; set; }
+}

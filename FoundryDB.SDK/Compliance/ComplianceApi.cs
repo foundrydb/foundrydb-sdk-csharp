@@ -137,4 +137,107 @@ public class ComplianceApi
         return JsonSerializer.Deserialize<ComplianceSigningKeySet>(json, FoundryDBClient.JsonOptions)
             ?? throw new FoundryDBException(200, "Deserialization Error", "Response did not contain a signing key set.");
     }
+
+    /// <summary>
+    /// Returns all compliance framework subscriptions for the given organisation.
+    /// </summary>
+    /// <param name="orgId">Organisation UUID.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task<List<ComplianceSubscription>> ListComplianceSubscriptionsAsync(
+        string orgId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(orgId))
+            throw new ArgumentException("Organisation ID must not be empty.", nameof(orgId));
+
+        var json = await _client.GetAsync(
+            $"/organizations/{orgId}/compliance-subscriptions",
+            orgId: null,
+            ct).ConfigureAwait(false);
+
+        var subscriptions = new List<ComplianceSubscription>();
+
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.TryGetProperty("subscriptions", out var arr))
+        {
+            foreach (var el in arr.EnumerateArray())
+            {
+                var s = JsonSerializer.Deserialize<ComplianceSubscription>(el.GetRawText(), FoundryDBClient.JsonOptions);
+                if (s is not null) subscriptions.Add(s);
+            }
+        }
+
+        return subscriptions;
+    }
+
+    /// <summary>
+    /// Subscribes the organisation to a compliance framework, enabling on-demand report generation
+    /// and quarterly automated evidence packets for that framework.
+    /// </summary>
+    /// <param name="orgId">Organisation UUID.</param>
+    /// <param name="framework">Compliance framework to subscribe to (e.g. "soc2", "gdpr_ropa", "dora", "eu_ai_act").</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The resulting subscription record.</returns>
+    public async Task<ComplianceSubscription> SubscribeComplianceFrameworkAsync(
+        string orgId,
+        string framework,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(orgId))
+            throw new ArgumentException("Organisation ID must not be empty.", nameof(orgId));
+        if (string.IsNullOrWhiteSpace(framework))
+            throw new ArgumentException("Framework must not be empty.", nameof(framework));
+
+        var json = await _client.PutAsync(
+            $"/organizations/{orgId}/compliance-subscriptions/{framework}",
+            payload: null,
+            orgId: null,
+            ct).ConfigureAwait(false);
+
+        return JsonSerializer.Deserialize<ComplianceSubscription>(json, FoundryDBClient.JsonOptions)
+            ?? throw new FoundryDBException(200, "Deserialization Error", "Response did not contain a compliance subscription.");
+    }
+
+    /// <summary>
+    /// Cancels the organisation's subscription to a compliance framework.
+    /// Existing reports remain accessible after cancellation.
+    /// </summary>
+    /// <param name="orgId">Organisation UUID.</param>
+    /// <param name="framework">Compliance framework to unsubscribe from.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task UnsubscribeComplianceFrameworkAsync(
+        string orgId,
+        string framework,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(orgId))
+            throw new ArgumentException("Organisation ID must not be empty.", nameof(orgId));
+        if (string.IsNullOrWhiteSpace(framework))
+            throw new ArgumentException("Framework must not be empty.", nameof(framework));
+
+        await _client.DeleteAsync(
+            $"/organizations/{orgId}/compliance-subscriptions/{framework}",
+            orgId: null,
+            ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Rotates the platform compliance signing key. After rotation, new reports are signed with
+    /// the freshly generated key. The previous key is retired but remains published at the
+    /// well-known endpoint so that signatures on existing reports can still be verified.
+    /// Requires admin privileges.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The updated set of public signing keys, including the new active key.</returns>
+    public async Task<ComplianceSigningKeySet> RotateComplianceSigningKeyAsync(CancellationToken ct = default)
+    {
+        var json = await _client.PostAsync(
+            "/admin/compliance/signing-keys/rotate",
+            payload: null,
+            orgId: null,
+            ct).ConfigureAwait(false);
+
+        return JsonSerializer.Deserialize<ComplianceSigningKeySet>(json, FoundryDBClient.JsonOptions)
+            ?? throw new FoundryDBException(200, "Deserialization Error", "Response did not contain a signing key set.");
+    }
 }
